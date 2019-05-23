@@ -221,7 +221,9 @@ class FeatureExpectationsTestCase(SubTestCase):
         )
 
     # Create the feature dict
-    fdict = features.FeaturesDict({"inner": feature})
+    fdict = features.build_feature_manager(
+        features.FeaturesDict({"inner": feature})
+    )
     for i, test in enumerate(tests):
       with self._subTest(str(i)):
         self.assertFeatureTest(

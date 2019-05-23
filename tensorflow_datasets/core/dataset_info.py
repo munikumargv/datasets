@@ -51,6 +51,7 @@ from tensorflow_datasets.core import api_utils
 from tensorflow_datasets.core import dataset_utils
 from tensorflow_datasets.core import splits as splits_lib
 from tensorflow_datasets.core import utils
+from tensorflow_datasets.core.features import features_manager
 from tensorflow_datasets.core.proto import dataset_info_pb2
 from tensorflow_datasets.core.proto import json_format
 from tensorflow_datasets.core.utils import gcs_utils
@@ -133,6 +134,9 @@ class DatasetInfo(object):
     if urls:
       self._info_proto.location.urls[:] = urls
 
+    features = (
+        features_manager.build_feature_manager(features) if features else None
+    )
     self._features = features
     self._splits = splits_lib.SplitDict()
     if supervised_keys is not None:

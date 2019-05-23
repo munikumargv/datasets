@@ -93,7 +93,7 @@ from tensorflow_datasets.core import utils
 class TensorInfo(object):
   """Structure containing info on the `tf.Tensor` shape/dtype."""
 
-  def __init__(self, shape, dtype, default_value=None):
+  def __init__(self, shape, dtype, default_value=None, sequence_rank=None):
     """Constructor.
 
     Args:
@@ -101,10 +101,12 @@ class TensorInfo(object):
       dtype: Tensor dtype
       default_value: Used for retrocompatibility with previous files if a new
         field is added to provide a default value when reading the file.
+      sequence_rank: `int`, Number of `tfds.features.Sequence` dimension.
     """
     self.shape = shape
     self.dtype = dtype
     self.default_value = default_value
+    self.sequence_rank = sequence_rank or 0
 
   @classmethod
   def copy_from(cls, tensor_info):
@@ -113,6 +115,7 @@ class TensorInfo(object):
         shape=tensor_info.shape,
         dtype=tensor_info.dtype,
         default_value=tensor_info.default_value,
+        sequence_rank=tensor_info.sequence_rank,
     )
 
   def __eq__(self, other):
@@ -290,8 +293,103 @@ class FeatureConnector(object):
     """
     return tfexample_data
 
+  def _flatten(self, x):
+    """Flatten the input dict into a list of values.
+
+    For instance, the following feature:
+    ```
+    feature = FeatureDict({
+        'a': w,
+        'b': x,
+        'c': {
+            'd': y,
+            'e': z,
+        },
+    })
+    ```
+
+    Applied to the following `dict`:
+    ```
+    feature._flatten({
+        'b': X,
+        'c': {
+            'd': Y,
+        },
+    })
+    ```
+
+    Will produce the following flattened output:
+    ```
+    [
+        None,
+        X,
+        Y,
+        None,
+    ]
+    ```
+
+    Args:
+      x: A nested `dict` like structure matching the structure of the
+      `FeatureConnector`. Note that some elements may be missing.
+
+    Returns:
+      `list`: The flattened list of element of `x`. Order is guaranteed to be
+      deterministic. Missing elements will be filled with `None`.
+    """
+    return [x]
+
+  def _nest(self, list_x):
+    """Pack the list into a nested dict.
+
+    This is the reverse function of flatten.
+
+    For instance, the following feature:
+    ```
+    feature = FeatureDict({
+        'a': w,
+        'b': x,
+        'c': {
+            'd': y,
+            'e': z,
+        },
+    })
+    ```
+
+    Applied to the following `dict`:
+    ```
+    feature._nest([
+        None,
+        X,
+        Y,
+        None,
+    ])
+    ```
+
+    Will produce the following flattened output:
+    ```
+    {
+        'a': None,
+        'b': X,
+        'c': {
+            'd': Y,
+            'e': None,
+        },
+    }
+    ```
+
+    Args:
+      list_x: List of values matching the flattened `FeatureConnector`
+        structure. Missing values should be filled with None.
+
+    Returns:
+      nested_x: nested `dict` matching the flattened `FeatureConnector`
+        structure.
+    """
+    assert len(list_x) == 1
+    return list_x[0]
+
   def _additional_repr_info(self):
-    """Override to return addtional info to go into __repr__."""
+    """Override to return additional info to go into __repr__."""
     return {}
 
   def __repr__(self):
@@ -448,6 +546,9 @@ class FeaturesDict(FeatureConnector):
   def values(self):
     return self._feature_dict.values()
 
+  def __contains__(self, k):
+    return k in self._feature_dict
+
   def __getitem__(self, key):
     """Return the feature associated with the key."""
     return self._feature_dict[key]
@@ -486,13 +587,53 @@ class FeaturesDict(FeatureConnector):
         in utils.zip_dict(self._feature_dict, example_dict)
     }
 
-  def decode_example(self, example_dict):
+  def decode_example(self, example_dict):  # pylint: disable=unused-argument
     """See base class for details."""
-    return {
-        k: feature.decode_example(example_value)
-        for k, (feature, example_value)
-        in utils.zip_dict(self._feature_dict, example_dict)
-    }
+    raise AssertionError(
+        'FeaturesDict should be wrapped from within a FeaturesManager'
+    )
+
+  def _flatten(self, x):
+    """See base class for details."""
+    if x and not isinstance(x, (dict, FeaturesDict)):
+      raise ValueError(
+          'Error while flattening dict: FeaturesDict received a non dict item: '
+          '{}'.format(x))
+
+    cache = {'counter': 0}  # Could use nonlocal in Python
+    def _get(k):
+      if x and k in x:
+        cache['counter'] += 1
+        return x[k]
+      return None
+
+    out = []
+    for k, f in sorted(self.items()):
+      out.extend(f._flatten(_get(k)))  # pylint: disable=protected-access
+
+    if x and cache['counter'] != len(x):
+      raise ValueError(
+          'Error while flattening dict: Not all dict items have been consumed, '
+          'this means that the provided dict structure do not match the '
+          '`FeatureDict` one. Please check for typos in the key names. '
+          'Available keys: {}. Unrecognized keys: {}'.format(
+              list(self.keys()), list(set(x.keys()) - set(self.keys())))
+      )
+    return out
+
+  def _nest(self, list_x):
+    """See base class for details."""
+    curr_pos = 0
+    out = {}
+    for k, f in sorted(self.items()):
+      offset = len(f._flatten(None))  # pylint: disable=protected-access
+      out[k] = f._nest(list_x[curr_pos:curr_pos+offset])  # pylint: disable=protected-access
+      curr_pos += offset
+    if curr_pos != len(list_x):
+      raise ValueError(
+          'Error while nesting: Expected length {} do not match input '
+          'length {} of {}'.format(curr_pos, len(list_x), list_x))
+    return out
 
   def save_metadata(self, data_dir, feature_name=None):
     """See base class for details."""

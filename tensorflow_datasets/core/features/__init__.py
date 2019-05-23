@@ -25,6 +25,7 @@ from tensorflow_datasets.core.features.feature import FeatureConnector
 from tensorflow_datasets.core.features.feature import FeaturesDict
 from tensorflow_datasets.core.features.feature import Tensor
 from tensorflow_datasets.core.features.feature import TensorInfo
+from tensorflow_datasets.core.features.features_manager import build_feature_manager
 from tensorflow_datasets.core.features.image_feature import Image
 from tensorflow_datasets.core.features.sequence_feature import Sequence
 from tensorflow_datasets.core.features.text_feature import Text
@@ -37,6 +38,7 @@ __all__ = [
     "Audio",
     "BBox",
     "BBoxFeature",
+    "build_feature_manager",
     "ClassLabel",
     "FeatureConnector",
     "FeaturesDict",
