@@ -18,6 +18,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+import tensorflow_datasets as tfds
 from tensorflow_datasets import testing
 from tensorflow_datasets.core.utils import version
 
@@ -36,20 +37,9 @@ class VersionTest(testing.TestCase):
       version.Version('1.3.*')
 
   def test_version(self):
-    """Test the zip nested function."""
-
-    self.assertEqual(version.Version(), version.Version(0, 0, 0))
-    self.assertEqual(version.Version('1.3.534'), version.Version(1, 3, 534))
-    self.assertEqual(
-        version.Version(major=1, minor=3, patch=5), version.Version(1, 3, 5))
-
-    self.assertEqual(version.Version('latest'), version.Version.LATEST)
-    self.assertEqual(
-        version.Version(version.Version('1.3.5')), version.Version(1, 3, 5))
-
-    self.assertEqual(str(version.Version(10, 2, 3)), '10.2.3')
-    self.assertEqual(str(version.Version()), '0.0.0')
-
+    v = version.Version('1.3.534')
+    self.assertEqual((v.major, v.minor, v.patch), (1, 3, 534))
+    self.assertEqual(str(v), '1.3.534')
     with self.assertRaisesWithPredicateMatch(ValueError, 'Format should be '):
       version.Version('1.3.-534')
     with self.assertRaisesWithPredicateMatch(ValueError, 'Format should be '):
@@ -60,6 +50,24 @@ class VersionTest(testing.TestCase):
       version.Version('1..5')
     with self.assertRaisesWithPredicateMatch(ValueError, 'Format should be '):
       version.Version('a.b.c')
+
+  def test_comparison(self):
+    v = version.Version('1.3.534')
+    self.assertTrue(v < version.Version('1.3.999'))
+    self.assertTrue(v < '1.3.999')
+    self.assertFalse(v > '1.4.5')
+    self.assertTrue(v == '1.3.534')
+    self.assertTrue(v != version.Version('1.3.535'))
+
+  def test_invalid_comparison(self):
+    v = version.Version('1.3.534')
+    with self.assertRaisesWithPredicateMatch(
+        ValueError, 'Format should be '):
+      unused_ = v < 'abc'
+    with self.assertRaisesWithPredicateMatch(
+        AssertionError,
+        '123 (type <type \'int\'>) cannot be compared to version'):
+      unused_ = v > 123
 
   def test_match(self):
     v = version.Version('1.2.3')
@@ -72,6 +80,14 @@ class VersionTest(testing.TestCase):
     self.assertFalse(v.match('1.3.*'))
     self.assertFalse(v.match('1.3.*'))
     self.assertFalse(v.match('2.*.*'))
+
+  def test_feature_default(self):
+    v = version.Version('1.2.3')
+    self.assertFalse(v.implements(version.Feature.DUMMY))
+
+  def test_feature_override(self):
+    v = version.Version('1.2.3', features={version.Feature.DUMMY: True})
+    self.assertTrue(v.implements(version.Feature.DUMMY))
 
 
 if __name__ == '__main__':
